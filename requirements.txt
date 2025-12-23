@@ -1,0 +1,12 @@
+brotlipy==0.7.0
+cffi==2.0.0
+greenlet==3.3.0
+markdown-it-py==4.0.0
+mdurl==0.1.2
+playwright==1.57.0
+playwright-stealth==2.0.0
+pycparser==2.23
+pyee==13.0.0
+Pygments==2.19.2
+rich==14.2.0
+typing_extensions==4.15.0
