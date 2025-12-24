@@ -39,16 +39,6 @@ class UniversalScraper:
 
     def run(self, search_text: str = "#Python", max_posts: int = 2,
             mode: str = 'search', single_href: str = None, blind_url: str = None) -> list:
-        """
-        Run the scraper in the specified mode.
-
-        :param search_text: Text to search (e.g., "#Python") - used in 'search' mode
-        :param max_posts: Max posts to scrape - used in 'search' and 'blind' modes
-        :param mode: Scraping mode - 'search' (default), 'single' for single post, 'blind' for current URL scrape
-        :param single_href: URL for single post scrape - required for 'single' mode
-        :param blind_url: URL to navigate to for blind scrape - optional for 'blind' mode (defaults to Home)
-        :return: List of scraped results
-        """
         results = []
         try:
             if mode == 'search':
@@ -57,7 +47,7 @@ class UniversalScraper:
             elif mode == 'single':
                 if not single_href:
                     raise ValueError("single_href is required for 'single' mode")
-                results = self.scraper.scrape_single_post(single_href)
+                results = self.scraper.search(text=single_href)
 
             elif mode == 'blind':
                 # Determine target URL. If blind_url is provided, use it.
