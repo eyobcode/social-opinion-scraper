@@ -8,6 +8,10 @@ import time
 import re
 from pprint import pprint
 
+# Import ScraperUtils
+from core.utils import ScraperUtils
+
+
 class XScraper(ScraperBase):
     def __init__(self, headless: bool = True, user_data_dir: str = None):
         super().__init__(headless=headless, user_data_dir=user_data_dir)
@@ -17,12 +21,15 @@ class XScraper(ScraperBase):
         self.driver = self.page
 
     def _find_element_with_selectors(self, selectors, timeout=10):
+        """
+        Try multiple selectors. Waits for the first visible one to appear and returns its locator.
+        """
         for sel in selectors:
             try:
-                elem = self.page.locator(sel)
-                if elem.count() > 0:
-                    elem.wait_for(state='visible', timeout=timeout * 1000)
-                    return elem
+                locator = self.page.locator(sel)
+                # wait_for will raise TimeoutError if not visible within timeout
+                locator.wait_for(state='visible', timeout=timeout * 1000)
+                return locator
             except PlaywrightTimeoutError:
                 continue
             except Exception:
@@ -30,11 +37,16 @@ class XScraper(ScraperBase):
         return None
 
     def _find_elements_with_selectors(self, selectors):
+        """
+        Return a list of element locators (actual elements) for the first selector that has matches.
+        """
         for sel in selectors:
             try:
-                elements = self.page.locator(sel).all()
-                if elements:
-                    return elements
+                locator = self.page.locator(sel)
+                count = locator.count()
+                if count > 0:
+                    # return actual element handles (static list) to mimic previous behavior
+                    return [locator.nth(i) for i in range(count)]
             except Exception:
                 continue
         return []
@@ -47,10 +59,10 @@ class XScraper(ScraperBase):
                     self.page.wait_for_timeout(2000)
                     return True
                 except Exception as e:
-                    self.utils.log_error(f"Attempt {attempt+1} failed for {url}: {e}")
+                    ScraperUtils.log_error(f"Attempt {attempt+1} failed for {url}: {e}")
                     if attempt == max_retries - 1:
                         return False
-                    time.sleep(5)
+                    ScraperUtils.random_delay(5.0)
             return False
 
         if not retry_goto("https://x.com/home"):
@@ -64,17 +76,20 @@ class XScraper(ScraperBase):
                 'div[data-testid="Home"]'
             ]
             if self._find_element_with_selectors(home_selectors, timeout=15000):
-                self.utils.log_success("Already logged in via persistent session.")
+                ScraperUtils.log_success("Already logged in via persistent session.")
                 return True
             else:
-                self.utils.log_info("Home URL but content not fully loaded; attempting reload.")
-                self.page.reload()
-                self.page.wait_for_load_state('domcontentloaded', timeout=60000)
-                if self._find_element_with_selectors(home_selectors, timeout=15000):
-                    self.utils.log_success("Logged in after reload.")
-                    return True
+                ScraperUtils.log_info("Home URL but content not fully loaded; attempting reload.")
+                try:
+                    self.page.reload()
+                    self.page.wait_for_load_state('domcontentloaded', timeout=60000)
+                    if self._find_element_with_selectors(home_selectors, timeout=15000):
+                        ScraperUtils.log_success("Logged in after reload.")
+                        return True
+                except Exception:
+                    pass
 
-        self.utils.log_info(f"Not logged in; at {current_url}. Proceeding to login.")
+        ScraperUtils.log_info(f"Not logged in; at {current_url}. Proceeding to login.")
 
         if "/login" not in current_url and "/i/flow/login" not in current_url:
             if not retry_goto("https://x.com/i/flow/login"):
@@ -138,7 +153,7 @@ class XScraper(ScraperBase):
                 try:
                     self.page.wait_for_url(lambda url: "/login" not in url and "/i/flow" not in url, timeout=15000)
                 except PlaywrightTimeoutError:
-                    self.utils.log_info("URL check timeout, but proceeding...")
+                    ScraperUtils.log_info("URL check timeout, but proceeding...")
 
                 popup_selectors = [
                     'div[role="button"]:has-text("Skip")',
@@ -154,14 +169,14 @@ class XScraper(ScraperBase):
                     pass
 
             except Exception as e:
-                self.utils.log_error(f"Auto login failed: {e}")
+                ScraperUtils.log_error(f"Auto login failed: {e}")
                 return False
         else:
             if self.headless:
-                self.utils.log_error("No credentials provided and headless mode enabled; cannot perform manual login.")
+                ScraperUtils.log_error("No credentials provided and headless mode enabled; cannot perform manual login.")
                 return False
             try:
-                print("Please complete the login manually in the opened browser window.")
+                print("Please complete login manually in the opened browser window.")
                 input("Press Enter when login is complete and you are on the home page...")
                 popup_selectors = [
                     'div[role="button"]:has-text("Skip")',
@@ -174,7 +189,7 @@ class XScraper(ScraperBase):
                 except PlaywrightTimeoutError:
                     pass
             except Exception as e:
-                self.utils.log_error(f"Manual login setup failed: {e}")
+                ScraperUtils.log_error(f"Manual login setup failed: {e}")
                 return False
 
         try:
@@ -182,16 +197,17 @@ class XScraper(ScraperBase):
                 return False
             home_selectors = ['div[data-testid="primaryColumn"]', 'div[data-testid="HomeTimeline"]']
             if self._find_element_with_selectors(home_selectors, timeout=15000):
-                self.utils.log_success("Login verified.")
+                ScraperUtils.log_success("Login verified.")
                 return True
             else:
-                self.utils.log_error(f"Login verification failed. Current URL: {self.page.url}")
+                ScraperUtils.log_error(f"Login verification failed. Current URL: {self.page.url}")
                 return False
         except Exception as e:
-            self.utils.log_error(f"Post-login verification error: {e}")
+            ScraperUtils.log_error(f"Post-login verification error: {e}")
             return False
 
-    def prepare_target(self, text: str = None):
+    @staticmethod
+    def prepare_target(text: str = None):
         if not text:
             return None
         text = text.strip()
@@ -216,7 +232,7 @@ class XScraper(ScraperBase):
         if text:
             target = self.prepare_target(text)
             if not target:
-                self.utils.log_error("Could not build target URL from text.")
+                ScraperUtils.log_error("Could not build target URL from text.")
                 return []
             self.page.goto(target, wait_until="domcontentloaded")
             self.page.wait_for_timeout(2000)
@@ -224,7 +240,7 @@ class XScraper(ScraperBase):
         elif not current_url:
             current_url = self.page.url
 
-        self.utils.log_info(f"Starting scrape on: {current_url}")
+        ScraperUtils.log_info(f"Starting scrape on: {current_url}")
 
         # PHASE 1: Collect URLs
         post_hrefs = []
@@ -251,8 +267,7 @@ class XScraper(ScraperBase):
                 print(f"[DEBUG] JS Evaluation failed: {e}")
                 anchors_hrefs = []
 
-            # Check for immediate stop condition INSIDE the loop processing anchors
-            # This prevents the "Found 17/2" issue
+            # Check for immediate stop condition INSIDE loop processing anchors
             found_new_this_round = 0
             for i, href in enumerate(anchors_hrefs):
                 if href in seen:
@@ -263,7 +278,7 @@ class XScraper(ScraperBase):
                     post_hrefs.append(href)
                     found_new_this_round += 1
 
-            # FIX: Break immediately if we hit max_posts, even if we found many in one scroll
+            # FIX: Break immediately if we hit max_posts
             if len(post_hrefs) >= max_posts:
                 print(f"[DEBUG] Target reached ({len(post_hrefs)}). Breaking scroll loop immediately.")
                 break
@@ -290,13 +305,13 @@ class XScraper(ScraperBase):
                     if post:
                         if post_time := post.get("timestamp"):
                             if start_time or end_time:
-                                post_time_dt = self.utils.convert_date(post_time)
+                                post_time_dt = ScraperUtils.convert_date(post_time)
                                 keep = True
                                 if start_time:
-                                    st = self.utils.convert_date(start_time)
+                                    st = ScraperUtils.convert_date(start_time)
                                     if st and post_time_dt < st: keep = False
                                 if end_time:
-                                    et = self.utils.convert_date(end_time)
+                                    et = ScraperUtils.convert_date(end_time)
                                     if et and post_time_dt > et: keep = False
                                 if not keep:
                                     print("Skipping post due to date filter.")
@@ -307,14 +322,20 @@ class XScraper(ScraperBase):
 
                     if self.page.url != current_url:
                         print(f"Returning to base: {current_url}")
-                        self.page.goto(current_url, timeout=60000)
-                        self.page.wait_for_timeout(1000)
+                        try:
+                            self.page.goto(current_url, timeout=60000)
+                            self.page.wait_for_timeout(1000)
+                        except Exception:
+                            pass
 
                 except Exception as e:
-                    self.utils.log_error(f"Error scraping post {href}: {e}")
-                    self.page.goto(current_url, timeout=60000)
+                    ScraperUtils.log_error(f"Error scraping post {href}: {e}")
+                    try:
+                        self.page.goto(current_url, timeout=60000)
+                    except Exception:
+                        pass
 
-                self.utils.random_delay(1.5, 3.0)
+                ScraperUtils.random_delay(1.5, 3.0)
                 progress.update(task_scrape, advance=1)
 
         return results
@@ -341,7 +362,8 @@ class XScraper(ScraperBase):
                     if el.count() > 0:
                         val = el.locator('span').all()[-1].inner_text()
                         return val
-                except: return "0"
+                except Exception:
+                    return "0"
 
             data["likes"] = get_metric("like")
             data["retweets"] = get_metric("retweet")
@@ -349,223 +371,8 @@ class XScraper(ScraperBase):
             data["views"] = get_metric("views")
             return data
         except Exception as e:
-            self.utils.log_error(f"DOM Fallback failed: {e}")
+            ScraperUtils.log_error(f"DOM Fallback failed: {e}")
             return None
-
-    def _extract_main_post(self, data):
-        """
-        Extracts the main post and optional repost from given JSON data.
-        Uses the reference logic provided to handle nested structures.
-        """
-        post = {
-            "id": None,
-            "created_at": None,
-            "text": None,
-            "author": {
-                "name": None,
-                "screen_name": None,
-                "rest_id": None,
-                "avatar_url": None
-            },
-            "metrics": {
-                "favorite_count": None,
-                "reply_count": None,
-                "retweet_count": None,
-                "quote_count": None,
-                "views_count": None
-            },
-            "entities": {
-                "hashtags": [],
-                "urls": [],
-                "user_mentions": []
-            },
-            "media": []
-        }
-
-        repost = None
-
-        # Find the main tweet result
-        main_tweet_result = None
-        instructions = data.get('data', {}).get('threaded_conversation_with_injections_v2', {}).get('instructions', [])
-        for instr in instructions:
-            entries = instr.get('entries', [])
-            for entry in entries:
-                content = entry.get('content', {})
-                item_content = content.get('itemContent', {})
-                # Check for main tweet type (TimelineTweet or entryId starting with tweet-)
-                if item_content.get('itemType') == 'TimelineTweet' or entry.get('entryId', '').startswith('tweet-'):
-                    main_tweet_result = item_content.get('tweet_results', {}).get('result', {})
-                    break
-            if main_tweet_result:
-                break
-
-        if not main_tweet_result:
-            return {"post": post}  # Return default if not found
-
-        # Handle visibility wrapper
-        if main_tweet_result.get('__typename') == 'TweetWithVisibilityResults':
-            main_tweet_result = main_tweet_result.get('tweet', {})
-
-        legacy = main_tweet_result.get('legacy', {})
-
-        # Extract post fields
-        post["id"] = main_tweet_result.get('rest_id') or legacy.get('id_str')
-        post["created_at"] = legacy.get('created_at') or main_tweet_result.get('created_at')
-        post["text"] = legacy.get('full_text') or main_tweet_result.get('text')
-
-        if not post["text"]:
-            note_tweet = main_tweet_result.get('note_tweet', {})
-            note_result = note_tweet.get('note_tweet_results', {}).get('result', {})
-            post["text"] = note_result.get('text') or note_result.get('full_text')
-
-        # Author
-        user_results = main_tweet_result.get('core', {}).get('user_results', {})
-        user_result = user_results.get('result', {})
-        if user_result.get('__typename') == 'UserWithVisibilityResults':
-            user_result = user_result.get('user', {})
-
-        user_legacy = user_result.get('legacy', {})
-        user_core = user_result.get('core', {})
-
-        post["author"]["name"] = user_core.get('name') or user_result.get('name') or user_legacy.get('name')
-        post["author"]["screen_name"] = user_core.get('screen_name') or user_result.get('username') or user_legacy.get('screen_name')
-        post["author"]["rest_id"] = user_result.get('rest_id')
-        post["author"]["avatar_url"] = user_result.get('profile_image_url') or user_result.get('avatar', {}).get('image_url') or user_legacy.get('profile_image_url_https')
-
-        # Metrics
-        post["metrics"]["favorite_count"] = legacy.get('favorite_count') or main_tweet_result.get('favorite_count')
-        post["metrics"]["reply_count"] = legacy.get('reply_count') or main_tweet_result.get('reply_count')
-        post["metrics"]["retweet_count"] = legacy.get('retweet_count') or main_tweet_result.get('retweet_count')
-        post["metrics"]["quote_count"] = legacy.get('quote_count') or main_tweet_result.get('quote_count')
-        post["metrics"]["views_count"] = main_tweet_result.get('views', {}).get('count')
-
-        # Entities
-        entities = legacy.get('entities', {}) or main_tweet_result.get('entities', {})
-        post["entities"]["hashtags"] = entities.get('hashtags', [])
-        post["entities"]["urls"] = entities.get('urls', [])
-        post["entities"]["user_mentions"] = entities.get('user_mentions', [])
-
-        # Media
-        extended_entities = legacy.get('extended_entities') or main_tweet_result.get('extended_entities') or {}
-        media_items = extended_entities.get('media', [])
-        for m in media_items:
-            media_obj = {
-                "media_key": m.get('media_key') or m.get('id_str'),
-                "type": m.get('type'),
-                "media_url": m.get('media_url_https') or m.get('media_url'),
-                "thumbnail": None,
-                "variants": []
-            }
-            if media_obj["type"] in ['video', 'animated_gif']:
-                video_info = m.get('video_info', {})
-                media_obj["thumbnail"] = m.get('media_url_https') or video_info.get('poster')
-                variants = video_info.get('variants', [])
-                media_obj["variants"] = [
-                    {"content_type": v.get('content_type'), "url": v.get('url')}
-                    for v in variants
-                ]
-            post["media"].append(media_obj)
-
-        # Check for repost/quote
-        quoted_status_result = main_tweet_result.get('quoted_status_result')
-        quoted_status = legacy.get('quoted_status')
-        quoted_status_id_str = legacy.get('quoted_status_id_str')
-
-        if quoted_status_result or quoted_status or quoted_status_id_str:
-            quoted = quoted_status_result.get('result') if quoted_status_result else quoted_status
-            if quoted and quoted.get('__typename') == 'TweetWithVisibilityResults':
-                quoted = quoted.get('tweet', {})
-
-            quoted_legacy = quoted.get('legacy', {}) if quoted else {}
-
-            repost_post = {
-                "id": quoted.get('rest_id') or quoted_legacy.get('id_str'),
-                "created_at": quoted_legacy.get('created_at') or quoted.get('created_at'),
-                "text": quoted_legacy.get('full_text') or quoted.get('full_text') or quoted.get('text'),
-                "author": {
-                    "name": None,
-                    "screen_name": None,
-                    "rest_id": None,
-                    "avatar_url": None
-                },
-                "metrics": {
-                    "favorite_count": quoted_legacy.get('favorite_count') or quoted.get('favorite_count'),
-                    "reply_count": quoted_legacy.get('reply_count') or quoted.get('reply_count'),
-                    "retweet_count": quoted_legacy.get('retweet_count') or quoted.get('retweet_count'),
-                    "quote_count": quoted_legacy.get('quote_count') or quoted.get('quote_count'),
-                    "views_count": quoted.get('views', {}).get('count')
-                },
-                "entities": {
-                    "hashtags": [],
-                    "urls": [],
-                    "user_mentions": []
-                },
-                "media": []
-            }
-
-            # Entities for repost
-            entities = quoted_legacy.get('entities', {}) or quoted.get('entities', {})
-            repost_post["entities"]["hashtags"] = entities.get('hashtags', [])
-            repost_post["entities"]["urls"] = entities.get('urls', [])
-            repost_post["entities"]["user_mentions"] = entities.get('user_mentions', [])
-
-            # Note tweet fallback for text
-            if not repost_post["text"]:
-                note_tweet = quoted.get('note_tweet', {})
-                note_result = note_tweet.get('note_tweet_results', {}).get('result', {})
-                repost_post["text"] = note_result.get('text') or note_result.get('full_text')
-
-            # Quoted author
-            quoted_core = quoted.get('core', {})
-            quoted_user_results = quoted_core.get('user_results', {})
-            quoted_user_result = quoted_user_results.get('result', {})
-            if quoted_user_result.get('__typename') == 'UserWithVisibilityResults':
-                quoted_user_result = quoted_user_result.get('user', {})
-
-            quoted_user_legacy = quoted_user_result.get('legacy', {})
-            quoted_user_core = quoted_user_result.get('core', {})
-
-            repost_post["author"]["name"] = quoted_user_core.get('name') or quoted_user_result.get('name') or quoted_user_legacy.get('name')
-            repost_post["author"]["screen_name"] = quoted_user_core.get('screen_name') or quoted_user_result.get('username') or quoted_user_legacy.get('screen_name')
-            repost_post["author"]["rest_id"] = quoted_user_result.get('rest_id')
-            repost_post["author"]["avatar_url"] = quoted_user_result.get('profile_image_url') or quoted_user_result.get('avatar', {}).get('image_url') or quoted_user_legacy.get('profile_image_url_https')
-
-            # Quoted media
-            quoted_extended_entities = quoted_legacy.get('extended_entities') or quoted.get('extended_entities') or {}
-            quoted_media_items = quoted_extended_entities.get('media', [])
-            for m in quoted_media_items:
-                media_obj = {
-                    "media_key": m.get('media_key') or m.get('id_str'),
-                    "type": m.get('type'),
-                    "media_url": m.get('media_url_https') or m.get('media_url'),
-                    "thumbnail": None,
-                    "variants": []
-                }
-                if media_obj["type"] in ['video', 'animated_gif']:
-                    video_info = m.get('video_info', {})
-                    media_obj["thumbnail"] = m.get('media_url_https') or video_info.get('poster')
-                    variants = video_info.get('variants', [])
-                    media_obj["variants"] = [
-                        {"content_type": v.get('content_type'), "url": v.get('url')}
-                        for v in variants
-                    ]
-                repost_post["media"].append(media_obj)
-
-            # Repost URL
-            repost_url = main_tweet_result.get('quoted_status_permalink', {}).get('expanded') or legacy.get('quoted_status_permalink', {}).get('expanded') or quoted.get('quoted_status_permalink', {}).get('expanded') or quoted_legacy.get('quoted_status_permalink', {}).get('expanded')
-            if repost_url and 'twitter.com' in repost_url:
-                repost_url = repost_url.replace('twitter.com', 'x.com')
-
-            repost = {
-                "url": repost_url,
-                "post": repost_post
-            }
-
-        result = {"post": post}
-        if repost:
-            result["repost"] = repost
-
-        return result
 
     def _scrape_single_post(self, href: str) -> dict | None:
         data = {
@@ -577,42 +384,73 @@ class XScraper(ScraperBase):
         captured = []
 
         def handle_response(response):
-            if response.status == 200 and 'graphql' in response.url and 'TweetDetail' in response.url:
-                try:
+            # Intercept all TweetDetail responses
+            try:
+                if response.status == 200 and 'graphql' in response.url and 'TweetDetail' in response.url:
                     body = response.body()
                     body_str = body.decode('utf-8') if isinstance(body, bytes) else body
                     json_body = json.loads(body_str)
                     captured.append(json_body)
-                except Exception as e:
-                    print(f"[ERROR] Failed to parse response: {e}")
+            except Exception as e:
+                print(f"[ERROR] Failed to parse response: {e}")
 
+        # Register listener
         self.page.on("response", handle_response)
 
         try:
-            self.page.goto(href, wait_until="domcontentloaded")
-            # CRITICAL FIX: Wait for network idle to ensure requests finish
             try:
-                self.page.wait_for_load_state('networkidle', timeout=15000)
-            except:
-                self.page.wait_for_timeout(2000)
-        except Exception as e:
-            self.utils.log_error(f"Navigation failed: {e}")
-            return None
+                self.page.goto(href, wait_until="domcontentloaded")
+                # Wait for network idle to ensure all initial requests (including comments) finish
+                try:
+                    self.page.wait_for_load_state('networkidle', timeout=15000)
+                except Exception:
+                    self.page.wait_for_timeout(2000)
+            except Exception as e:
+                ScraperUtils.log_error(f"Navigation failed: {e}")
+                return None
         finally:
-            self.page.remove_listener("response", handle_response)
+            # Always remove the listener
+            try:
+                self.page.off("response", handle_response)
+            except Exception:
+                try:
+                    # older fallback name if present
+                    self.page.remove_listener("response", handle_response)
+                except Exception:
+                    pass
 
-        # Parse main tweet using the reference logic
+        ScraperUtils.log_info(f"Parsing {len(captured)} captured responses.")
+
+        # --- NEW LOGIC: EXTRACT INITIAL COMMENTS ---
+        initial_comments = []
+
+        for body in captured:
+            try:
+                batch_comments = ScraperUtils.parse_comments_from_json(body)
+                for c in batch_comments:
+                    if c not in initial_comments:
+                        initial_comments.append(c)
+            except Exception as e:
+                ScraperUtils.log_error(f"Error parsing initial comments from JSON: {e}")
+
+        ScraperUtils.log_info(f"Found {len(initial_comments)} initial comments in page load.")
+
+        # --- MAIN POST EXTRACTION ---
         extracted = None
         for body in captured:
-            extracted = self._extract_main_post(body)
-            if extracted.get("post", {}).get("id"):
-                print("[SUCCESS] Main tweet extracted successfully.")
-                break
+            try:
+                extracted = ScraperUtils.parse_tweet_json(body)
+                if extracted.get("post", {}).get("id"):
+                    ScraperUtils.log_success("Main tweet extracted successfully.")
+                    break
+            except Exception as e:
+                # skip malformed capture
+                continue
 
         if extracted and extracted.get("post"):
             post_data = extracted["post"]
 
-            # Map structured data to the flat 'data' dict expected by the rest of the script
+            # Map structured data to flat 'data' dict
             data["id"] = post_data["id"]
             data["timestamp"] = post_data["created_at"]
             data["text"] = post_data["text"]
@@ -643,12 +481,26 @@ class XScraper(ScraperBase):
             if "repost" in extracted:
                 data["repost"] = extracted["repost"]
 
-            # Comments
-            print("[INFO] Starting comment extraction...")
-            data["comments"] = self._extract_comments()
+            # --- COMMENTS EXTRACTION ---
+            ScraperUtils.log_info("Starting additional comment extraction via scroll...")
+            additional_comments = ScraperUtils.extract_comments(self.page)
+
+            # Merge initial and additional comments
+            final_comments_list = []
+            seen_comments = set()
+
+            for c in initial_comments + additional_comments:
+                key = f"{c.get('user', '')}||{c.get('text', '')[:200]}"
+                if key not in seen_comments:
+                    seen_comments.add(key)
+                    final_comments_list.append(c)
+
+            ScraperUtils.log_info(f"Total comments extracted: {len(final_comments_list)}.")
+            data["comments"] = final_comments_list
+
             return data
         else:
-            print("GraphQL data missing, attempting DOM extraction...")
+            ScraperUtils.log_info("GraphQL data missing, attempting DOM extraction...")
             # DOM Fallback
             try:
                 text_el = self.page.locator('div[data-testid="tweetText"]').first
@@ -668,285 +520,11 @@ class XScraper(ScraperBase):
                     data["mentions"] = re.findall(r'@\w+', data["text"])
                     data["hashtags"] = re.findall(r'#\w+', data["text"])
 
-                # Note: DOM extraction doesn't support comments or metrics reliably in this scope
                 data["comments"] = []
                 return data
             except Exception as e:
-                self.utils.log_error(f"DOM Fallback failed: {e}")
+                ScraperUtils.log_error(f"DOM Fallback failed: {e}")
                 return None
-
-    def _extract_comments(self):
-        """Extract comments by capturing GraphQL responses after scrolling to load all comments."""
-        comments = []
-        seen = set()
-        captured = []
-
-        def handle_response(response):
-            if response.status == 200 and 'graphql' in response.url and 'TweetDetail' in response.url:
-                try:
-                    body = response.body()
-                    body_str = body.decode('utf-8') if isinstance(body, bytes) else body
-                    json_body = json.loads(body_str)
-                    captured.append(json_body)
-                except Exception:
-                    pass
-
-        self.page.on("response", handle_response)
-
-        # Scroll whole page logic as requested
-        # We are already on the page, but scrolling triggers new requests
-
-        last_height = self.page.evaluate("document.body.scrollHeight")
-        scrolls = 0
-        max_scrolls = 30 # Reduced slightly as 50 is a lot
-        no_change_count = 0
-        max_no_change = 3
-
-        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn(), TextColumn("[progress.percentage]{task.percentage:>3.0f}%")) as progress:
-            task_load = progress.add_task("[magenta]Loading comments...", total=max_scrolls)
-
-            while scrolls < max_scrolls and no_change_count < max_no_change:
-                # Scroll to bottom of page (whole page)
-                self.page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
-                self.page.wait_for_timeout(2000) # Wait for content to load
-
-                # Handle "Show" buttons (replies/spam)
-
-                button_selectors = [
-                    "//button[contains(., 'Show probable spam')]",
-                ]
-                for selector in button_selectors:
-                    try:
-                        buttons = self.page.locator(f"xpath={selector}").all()
-                        for button in buttons:
-                            try:
-                                if button.is_visible():
-                                    button.click()
-                                    self.page.wait_for_timeout(500)
-                                    no_change_count = 0
-                            except:
-                                pass
-                    except:
-                        pass
-
-                new_height = self.page.evaluate("document.body.scrollHeight")
-                if new_height == last_height:
-                    no_change_count += 1
-                else:
-                    no_change_count = 0
-                    last_height = new_height
-
-                scrolls += 1
-                progress.update(task_load, advance=1)
-
-        self.page.remove_listener("response", handle_response)
-        print(f"[INFO] Scroll finished. Parsing {len(captured)} responses.")
-
-        # DEBUG: Print captured JSON structure for comments to help user debug
-        if len(captured) > 0:
-            print("\n[DEBUG] --- Captured Comment JSON Structure (First Response) ---")
-            pprint(captured[0])
-            print("[DEBUG] ------------------------------\n")
-        else:
-            print("[DEBUG] No comment responses captured during scroll.")
-
-        # Parse captured GraphQL JSONs for comments using robust logic
-        for data in captured:
-            try:
-                instructions = data.get('data', {}).get('threaded_conversation_with_injections_v2', {}).get('instructions', [])
-                for instr in instructions:
-                    if instr.get('type') == 'TimelineAddEntries':
-                        entries = instr.get('entries', [])
-                        for entry in entries:
-                            entry_id = entry.get('entryId', '')
-                            if entry_id.startswith('conversationthread-'):
-                                items = entry.get('content', {}).get('items', [])
-                                for item in items:
-                                    tweet_result = item.get('item', {}).get('itemContent', {}).get('tweet_results', {}).get('result', {})
-
-                                    if tweet_result.get('__typename') == 'TweetWithVisibilityResults':
-                                        tweet_result = tweet_result.get('tweet', {})
-
-                                    # Handle if repost or quote in comment
-                                    inner_result = None
-                                    inner_type = None
-                                    if 'retweeted_status_result' in tweet_result:
-                                        inner_result = tweet_result['retweeted_status_result'].get('result', {})
-                                        inner_type = 'repost'
-                                    elif 'quoted_status_result' in tweet_result:
-                                        inner_result = tweet_result['quoted_status_result'].get('result', {})
-                                        inner_type = 'quote'
-                                    elif 'legacy' in tweet_result:
-                                        legacy = tweet_result['legacy']
-                                        if 'retweeted_status' in legacy:
-                                            inner_result = legacy['retweeted_status']
-                                            inner_type = 'repost'
-                                        elif 'quoted_status' in legacy:
-                                            inner_result = legacy['quoted_status']
-                                            inner_type = 'quote'
-
-                                    core = tweet_result.get('core', {})
-                                    user_results = core.get('user_results', {}).get('result', {})
-
-                                    if user_results.get('__typename') == 'UserWithVisibilityResults':
-                                        user_result = user_results.get('user', {})
-                                    else:
-                                        user_result = user_results
-
-                                    user_core = user_result.get('core', {})
-                                    user_result_legacy = user_result.get('legacy', {})
-                                    legacy = tweet_result.get('legacy', {})
-
-                                    # Robust fallback for text
-                                    text_dicts = [legacy, tweet_result]
-                                    text_keys = ['full_text', 'text']
-                                    text = None
-                                    for d in text_dicts:
-                                        for k in text_keys:
-                                            if k in d:
-                                                text = d[k]
-                                                break
-                                        if text:
-                                            break
-                                    if not text:
-                                        note_tweet = tweet_result.get('note_tweet', {})
-                                        note_result = note_tweet.get('note_tweet_results', {}).get('result', {})
-                                        text = note_result.get('text') or note_result.get('full_text')
-
-                                    # Robust fallback for user_handle
-                                    handle_dicts = [user_core, user_result_legacy, user_result]
-                                    handle_keys = ['screen_name', 'username', 'handle', 'user_name', 'user_commenter']
-                                    user_handle = None
-                                    for d in handle_dicts:
-                                        for k in handle_keys:
-                                            if k in d:
-                                                user_handle = d[k]
-                                                break
-                                        if user_handle:
-                                            break
-                                    user = f"https://x.com/{user_handle}" if user_handle else None
-
-                                    # Robust fallback for timestamp
-                                    timestamp_dicts = [legacy, tweet_result]
-                                    timestamp_keys = ['created_at']
-                                    timestamp = None
-                                    for d in timestamp_dicts:
-                                        for k in timestamp_keys:
-                                            if k in d:
-                                                timestamp = d[k]
-                                                break
-                                        if timestamp:
-                                            break
-
-                                    # Robust fallback for likes
-                                    likes_dicts = [legacy, tweet_result]
-                                    likes_keys = ['favorite_count', 'like_count']
-                                    likes = 0
-                                    for d in likes_dicts:
-                                        for k in likes_keys:
-                                            if k in d:
-                                                likes = d[k]
-                                                break
-                                        if likes != 0:
-                                            break
-                                    likes = str(likes)
-
-                                    # Robust fallback for reposts
-                                    reposts_dicts = [legacy, tweet_result]
-                                    reposts_keys = ['retweet_count', 'repost_count']
-                                    reposts = 0
-                                    for d in reposts_dicts:
-                                        for k in reposts_keys:
-                                            if k in d:
-                                                reposts = d[k]
-                                                break
-                                        if reposts != 0:
-                                            break
-                                    reposts = str(reposts)
-
-                                    # Robust fallback for views
-                                    views_obj = tweet_result.get('views', {}) or tweet_result.get('view_count', {})
-                                    views = str(views_obj.get('count') or views_obj.get('value') or tweet_result.get('view_count') or '')
-
-                                    if user and text:
-                                        key = f"{user}||{text[:200]}"
-                                        if key in seen:
-                                            continue
-                                        seen.add(key)
-
-                                        comment = {
-                                            "user": user,
-                                            "text": text,
-                                            "timestamp": timestamp,
-                                            "likes": likes,
-                                            "reposts": reposts,
-                                            "views": views,
-                                        }
-
-                                        # Media extraction
-                                        media = legacy.get('extended_entities', {}).get('media', [])
-                                        img = next((m['media_url_https'] for m in media if m['type'] == 'photo'), None)
-                                        video = None
-                                        for m in media:
-                                            if m['type'] in ['video', 'animated_gif']:
-                                                variants = m.get('video_info', {}).get('variants', [])
-                                                if variants:
-                                                    video = max(variants, key=lambda v: v.get('bitrate', 0))['url']
-                                                break
-                                        if img:
-                                            comment["img"] = img
-                                        if video:
-                                            comment["video"] = video
-
-                                        # Handle inner post if repost or quote
-                                        if inner_result:
-                                            inner_legacy = inner_result.get('legacy', {}) if 'legacy' in inner_result else inner_result
-                                            inner_core = inner_result.get('core', {})
-                                            inner_user_result = inner_core.get('user_results', {}).get('result', {})
-
-                                            if inner_user_result.get('__typename') == 'UserWithVisibilityResults':
-                                                inner_user_result = inner_user_result.get('user', {})
-                                            else:
-                                                inner_user_result = inner_user_result
-
-                                            inner_user_core = inner_user_result.get('core', {})
-                                            inner_user_legacy = inner_user_result.get('legacy', {})
-
-                                            inner_text = inner_legacy.get('full_text') or inner_result.get('full_text') or inner_result.get('text')
-                                            inner_user_handle = None
-                                            for d in [inner_user_core, inner_user_legacy, inner_user_result]:
-                                                for k in handle_keys:
-                                                    inner_user_handle = d.get(k)
-                                                    if inner_user_handle:
-                                                        break
-                                                if inner_user_handle:
-                                                    break
-                                            inner_user = f"https://x.com/{inner_user_handle}" if inner_user_handle else None
-
-                                            comment["type"] = inner_type
-                                            comment["original_user"] = inner_user
-                                            comment["original_text"] = inner_text
-
-                                            # Add inner media if not already
-                                            inner_media = inner_legacy.get('extended_entities', {}).get('media', [])
-                                            inner_img = next((m['media_url_https'] for m in inner_media if m['type'] == 'photo'), None)
-                                            inner_video = None
-                                            for m in inner_media:
-                                                if m['type'] in ['video', 'animated_gif']:
-                                                    variants = m.get('video_info', {}).get('variants', [])
-                                                    if variants:
-                                                        inner_video = max(variants, key=lambda v: v.get('bitrate', 0))['url']
-                                                    break
-                                            if inner_img and "img" not in comment:
-                                                comment["img"] = inner_img
-                                            if inner_video and "video" not in comment:
-                                                comment["video"] = inner_video
-
-                                        comments.append(comment)
-            except Exception:
-                pass
-        print(f"[INFO] Extracted {len(comments)} comments.")
-        return comments
 
     def close(self):
         self.browser_engine.quit_driver()
