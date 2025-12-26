@@ -6,16 +6,20 @@ from datetime import datetime
 import re
 
 class InstaUtils:
-    def log_info(self, msg):
+    @staticmethod
+    def log_info(msg):
         print(f"INFO: {msg}")
 
-    def log_error(self, msg):
+    @staticmethod
+    def log_error(msg):
         print(f"ERROR: {msg}")
 
-    def log_success(self, msg):
+    @staticmethod
+    def log_success(msg):
         print(f"SUCCESS: {msg}")
 
-    def load_cookies(self, page, path):
+    @staticmethod
+    def load_cookies(page, path):
         print("INFO: load_cookies started with path={}".format(path))
         if os.path.exists(path):
             print("INFO: path exists")
@@ -30,7 +34,8 @@ class InstaUtils:
         print("INFO: load_cookies finished false")
         return False
 
-    def save_cookies(self, page, path):
+    @staticmethod
+    def save_cookies(page, path):
         print("INFO: save_cookies started with path={}".format(path))
         cookies = page.context.cookies()
         print("INFO: cookies got")
@@ -42,7 +47,8 @@ class InstaUtils:
             print("INFO: cookies dumped")
         print("INFO: save_cookies finished")
 
-    def prepare_target(self, text):
+    @staticmethod
+    def prepare_target(text):
         print("INFO: prepare_target started with text={}".format(text))
         if not text:
             print("INFO: no text, returning None")
@@ -64,16 +70,17 @@ class InstaUtils:
             target = f"https://www.instagram.com/explore/search/keyword/?q={text}"
             print("INFO: default target: {}".format(target))
             return target
-        print("INFO: prepare_target finished")
 
-    def random_delay(self, min_sec, max_sec):
+    @staticmethod
+    def random_delay(min_sec, max_sec):
         print("INFO: random_delay started with min={}, max={}".format(min_sec, max_sec))
         delay = random.uniform(min_sec, max_sec)
         print("INFO: delay: {}".format(delay))
         time.sleep(delay)
         print("INFO: random_delay finished")
 
-    def scroll_page(self, page, pause, max_scrolls):
+    @staticmethod
+    def scroll_page(page, pause, max_scrolls):
         print("INFO: scroll_page started with pause={}, max_scrolls={}".format(pause, max_scrolls))
         for i in range(max_scrolls):
             print("INFO: scroll {}".format(i))
@@ -83,7 +90,8 @@ class InstaUtils:
             print("INFO: sleep done")
         print("INFO: scroll_page finished")
 
-    def convert_date(self, date_str):
+    @staticmethod
+    def convert_date(date_str):
         print("INFO: convert_date started with date_str={}".format(date_str))
         try:
             dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
@@ -98,10 +106,9 @@ class InstaUtils:
             except ValueError:
                 print("INFO: strptime failed")
                 return None
-        print("INFO: convert_date finished")
 
-
-    def parse_instagram_comment(self, container):
+    @staticmethod
+    def parse_instagram_comment(container):
         # --- Username ---
         link_el = container.query_selector("xpath=.//a[@role='link' and @tabindex='0']")
         username = link_el.get_attribute("href") if link_el else None
