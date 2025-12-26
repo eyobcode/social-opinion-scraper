@@ -62,7 +62,6 @@ class InstagramScraper(ScraperBase):
             .format(selectors, by, timeout, wait)
         )
 
-        # WAIT mode: preserve original behavior exactly (per-selector wait)
         if wait:
             timeout_ms = timeout * 1000
             self.insta_utils.log_info("timeout_ms calculated: {}".format(timeout_ms))
