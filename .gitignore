@@ -156,6 +156,5 @@ dmypy.json
 cython_debug/
 
 .idea/
-chrome_profile/*
-chrome_profile/Default/
+chrome_profile/
 
