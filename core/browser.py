@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright
 class BrowserEngine:
     def __init__(self, headless: bool = False, window_size: str = "1280,900", user_data_dir: str | None = None):
         # Dedicated directory for Playwright profile to avoid conflicts
-        self.user_data_dir = user_data_dir or os.path.join(os.getcwd(), "twitter_profile")
+        self.user_data_dir = user_data_dir or os.path.join(os.getcwd(), "chrome_profile")
         os.makedirs(self.user_data_dir, exist_ok=True)
         self.headless = headless
         self.window_size = window_size
