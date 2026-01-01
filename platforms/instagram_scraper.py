@@ -1,8 +1,8 @@
-# platforms/instagram_scraper.py
 import os
 import time
 import re
 from tqdm import tqdm
+from urllib.parse import urlparse
 from playwright.sync_api import TimeoutError, ElementHandle
 # Assuming imports for base and utils
 from platforms.base import ScraperBase
@@ -235,15 +235,91 @@ class InstagramScraper(ScraperBase):
         self.insta_utils.log_info("no child elements found")
         return []
 
-
-    def login(self, username: str = None, password: str = None, cookie_path="cookies/instagram_cookies.json"):
-        self.insta_utils.log_info("login started with username={}, password={}, cookie_path={}".format(username, password, cookie_path))
+    def login(self, username: str = None, password: str = None, manual_login_timeout: int = 60):
+        self.insta_utils.log_info("Starting login")
         self.setup_page()
-        self.insta_utils.log_info("setup_page called in login")
-        self.page.goto("https://www.instagram.com/")
-        self.insta_utils.log_info("goto home page")
-        self.insta_utils.log_info("login finished")
-        return True
+        self.page.goto("https://www.instagram.com/accounts/login/")
+
+        def retry_goto(url, max_retries=3, timeout=5000):
+            for attempt in range(1, max_retries + 1):
+                try:
+                    self.insta_utils.log_info(f"Going to {url} (attempt {attempt})")
+                    # Use 'commit' to minimize waiting - just wait for navigation to commit, not full load
+                    self.page.goto(url, timeout=timeout, wait_until='commit')
+                    # No additional wait_for_load_state - check URL immediately after commit
+                    current_url = self.page.url
+                    self.insta_utils.log_info(f"Post-commit URL: {current_url}")
+                    return True
+                except Exception as e:
+                    self.insta_utils.log_error(f"Attempt {attempt} failed: {e}")
+                    time.sleep(2 * attempt)
+            return False
+
+        login_url = "https://www.instagram.com/accounts/login/"
+        print("trying .....")
+        if not retry_goto(login_url, max_retries=3, timeout=10000):
+            self.insta_utils.log_error("Cannot reach login page")
+            return False
+
+        # Immediately check if redirected (logged in) without waiting for load
+        current_path = urlparse(self.page.url).path
+        if "/accounts/login" not in current_path:
+            self.insta_utils.log_success("Already logged in (redirect detected after commit)")
+            # Optional: Brief wait for page to settle if needed, but avoid long waits
+            time.sleep(2)  # Short sleep to let redirect settle
+            return True
+        else:
+            self.insta_utils.log_info("On login page (no redirect), proceeding with login")
+
+        if username and password:
+            try:
+                # Wait briefly for inputs to appear (since we didn't wait for full load)
+                time.sleep(2)  # Adjust as needed
+                user_input = self._find_element_with_selectors(["input[name='username']", "input[name='email']"], by='css', timeout=20)
+                pwd_input = self._find_element_with_selectors(["input[name='password']", "input[name='pass']"], by='css', timeout=20)
+                submit_btn = self._find_element_with_selectors(["button[type='submit']", "button[data-testid='login-button']"], by='css', timeout=10)
+                user_input.fill(username)
+                pwd_input.fill(password)
+                if submit_btn:
+                    submit_btn.click()
+                else:
+                    pwd_input.press("Enter")
+                # After submit, wait for network idle with longer timeout
+                self.page.wait_for_load_state("networkidle", timeout=60000)
+            except Exception as e:
+                self.insta_utils.log_error(f"Login failed: {e}")
+                return False
+        else:
+            self.insta_utils.log_info("Waiting for manual login...")
+            # For manual, go to home and wait for selector or URL change
+            retry_goto("https://www.instagram.com/accounts/login/", max_retries=2, timeout=10000)
+            try:
+                self.page.wait_for_selector("svg[aria-label='Home']", timeout=manual_login_timeout * 1000)
+                self.insta_utils.log_info("Home selector found")
+            except Exception:
+                # Fallback to URL check
+                if "/accounts/login" not in urlparse(self.page.url).path:
+                    self.insta_utils.log_info("Manual login: Home selector timeout, but URL indicates success")
+                else:
+                    self.insta_utils.log_error("Manual login timeout")
+                    return False
+
+        # Verify login via URL (no long waits)
+        for _ in range(5):
+            url_path = urlparse(self.page.url).path
+            if "/accounts/login" not in url_path:
+                self.insta_utils.log_success("Login successful")
+                return True
+            time.sleep(3)
+            try:
+                self.page.reload(timeout=30000)
+                # Short wait after reload
+                time.sleep(2)
+            except:
+                pass
+
+        self.insta_utils.log_error("Login failed after verification")
+        return False
 
     def blind_scrape(self, url: str = None, max_posts=10):
         self.insta_utils.log_info("blind_scrape started with url={}, max_posts={}".format(url, max_posts))
