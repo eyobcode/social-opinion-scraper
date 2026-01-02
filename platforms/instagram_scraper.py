@@ -561,10 +561,8 @@ class InstagramScraper(ScraperBase):
         scrolled = False
 
         for sel in comment_scroll_selectors:
-
             locator = self.page.locator(f"xpath={sel}")  # Create Locator here
             if self.insta_utils.scroll_until_end(self.page, locator):
-
                 scrolled = True
                 break
         if not scrolled:
@@ -603,7 +601,8 @@ class InstagramScraper(ScraperBase):
         for container in tqdm(containers, desc="Processing comments"):
             try:
                 parsed = self.insta_utils.parse_instagram_comment(container)
-                comments.append(parsed)
+                if parsed:
+                    comments.append(parsed)
             except Exception as e:
                 self.insta_utils.log_error(f"Error processing comment container: {e}")
                 continue
