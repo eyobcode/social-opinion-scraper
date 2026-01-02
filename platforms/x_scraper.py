@@ -247,9 +247,6 @@ class XScraper(ScraperBase):
         seen = set()
         scroll_rounds = 0
         url_pattern = re.compile(r'^https?://(www\.)?x\.com/.+/status/[0-9]+(?:\?.*)?$')
-
-        print(f"--- Phase 1: Collecting URLs (Need {max_posts}) ---")
-
         max_scrolls = 50
 
         while len(post_hrefs) < max_posts and scroll_rounds < max_scrolls:
