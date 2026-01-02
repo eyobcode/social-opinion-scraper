@@ -67,7 +67,10 @@ class InstaUtils:
 
         # --- Time ---
         time_el = container.query_selector("xpath=.//time[@title] | .//span[@title]")
-        time = time_el.get_attribute("title") if time_el else None
+        comment_time = time_el.get_attribute("title") if time_el else None
+
+        if comment_time is None:
+            return None
 
         # --- Message ---
         message_el = container.query_selector(
@@ -108,8 +111,8 @@ class InstaUtils:
 
         # --- Parsed dictionary ---
         parsed = {
-            "username": username,
-            "time": time,
+            "username": f"@{username.strip('/').split('/')[0]}" if username else None ,
+            "time": comment_time,
             "message": message,
             "likes": likes,
             "replies": num_replies
@@ -121,7 +124,7 @@ class InstaUtils:
 
 
     @staticmethod
-    def scroll_until_end(page, locator, pause=2, max_tries=3):
+    def scroll_until_end(page, locator, pause=3, max_tries=3):
         locator.wait_for(state="visible", timeout=2000)
         tries = 0
 
