@@ -6,7 +6,7 @@ def main():
     # x_scraper = UniversalScraper(platform='x', headless=False)
     # # results = x_scraper.run(max_posts=2, mode='blind')
     # # results = x_scraper.run(mode="single", single_href="https://x.com/elonmusk/status/2003579749176868875")
-    # results = x_scraper.run(max_posts=2, mode='search', search_text="PM Abiy ahemed")
+    # results = x_scraper.run(max_posts=2, mode='search', search_text="PM Abiy Ahmed")
     #
     # ScraperUtils.save_json("x_results.json", results)
     # print(f"Scraped {len(results)} X posts. Saved to x_results.json")

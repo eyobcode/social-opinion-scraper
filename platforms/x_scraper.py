@@ -4,11 +4,8 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from platforms.base import ScraperBase
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 import json
-import time
 import re
-from pprint import pprint
 
-# Import ScraperUtils
 from core.utils import ScraperUtils
 
 
