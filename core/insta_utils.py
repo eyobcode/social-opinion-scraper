@@ -143,7 +143,7 @@ class InstaUtils:
        # Initialize tqdm progress bar
         progress_bar = tqdm(
             total=last_height,
-            bar_format=f"{GREEN}Scrolling comments:{RESET} {{bar}} |{{percentage:3.0f}}% | Time: {{elapsed}}",
+            bar_format=f"{GREEN}Scrolling comments:{RESET} |{{bar}}| {{percentage:3.0f}}% | Time: {{elapsed}}",
             colour="blue",
         )
         while True:

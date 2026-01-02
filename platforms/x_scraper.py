@@ -1,4 +1,3 @@
-# platforms/x_scraper.py
 from core.browser import BrowserEngine
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from platforms.base import ScraperBase
